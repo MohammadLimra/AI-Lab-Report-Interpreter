@@ -77,23 +77,22 @@ def login_required(f):
     return decorated_function
 
 def send_otp_email(recipient_email, otp_code):
-    otp_dev_mode = os.environ.get("OTP_DEV_MODE", "true").lower() == "true"
-    if otp_dev_mode:
-        print(f"\n[OTP DEV MODE] Verification code for {recipient_email} is: {otp_code}\n")
-    
     last_error = None
     sent_successfully = False
 
-    # 1. Try Resend API using SDK
+    # 1. Try Resend API
     resend_api_key = os.environ.get("RESEND_API_KEY")
     otp_from_email = os.environ.get("OTP_FROM_EMAIL")
     
     if resend_api_key and otp_from_email:
         try:
-            import resend
-            resend.api_key = resend_api_key
-            
-            params = {
+            import requests as python_requests
+            url = "https://api.resend.com/emails"
+            headers = {
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
                 "from": otp_from_email,
                 "to": recipient_email,
                 "subject": "Your Medical Report Interpreter Verification Code",
@@ -109,67 +108,26 @@ def send_otp_email(recipient_email, otp_code):
                 </div>
                 """
             }
-            
-            email_response = resend.Emails.send(params)
-            print(f"[OTP] Successfully sent verification code to {recipient_email} via Resend SDK: {email_response}")
-            sent_successfully = True
+            response = python_requests.post(url, headers=headers, json=payload, timeout=10)
+            if response.status_code in [200, 201]:
+                print(f"[OTP] Successfully sent verification code to {recipient_email} via Resend")
+                sent_successfully = True
+            else:
+                try:
+                    err_json = response.json()
+                    resend_msg = err_json.get("message", response.text)
+                except Exception:
+                    resend_msg = response.text
+                last_error = f"Resend API error: {resend_msg}"
+                print(f"[OTP ERROR] {last_error}")
         except Exception as e:
-            last_error = f"Resend SDK error: {str(e)}"
+            last_error = f"Resend API exception: {str(e)}"
             print(f"[OTP ERROR] {last_error}")
             
-    # 2. Try SMTP fallback if not sent yet
-    if not sent_successfully:
-        smtp_server = os.environ.get("SMTP_SERVER")
-        smtp_port = os.environ.get("SMTP_PORT")
-        smtp_username = os.environ.get("SMTP_USERNAME")
-        smtp_password = os.environ.get("SMTP_PASSWORD")
-        smtp_sender = os.environ.get("SMTP_SENDER") or smtp_username
-
-        if all([smtp_server, smtp_port, smtp_username, smtp_password]):
-            try:
-                msg = MIMEMultipart()
-                msg['From'] = smtp_sender
-                msg['To'] = recipient_email
-                msg['Subject'] = "Your Medical Report Interpreter Verification Code"
-
-                body = f"""Hello,
-
-Your verification code is: {otp_code}
-
-This code is valid for 5 minutes. If you did not request this code, please ignore this email.
-
-Best regards,
-Medical Report Interpreter Team"""
-                
-                msg.attach(MIMEText(body, 'plain'))
-
-                port = int(smtp_port)
-                if port == 465:
-                    server = smtplib.SMTP_SSL(smtp_server, port)
-                else:
-                    server = smtplib.SMTP(smtp_server, port)
-                    server.starttls()
-
-                server.login(smtp_username, smtp_password)
-                server.sendmail(smtp_sender, recipient_email, msg.as_string())
-                server.quit()
-
-                print(f"[OTP] Successfully sent verification code to {recipient_email} via SMTP")
-                sent_successfully = True
-            except Exception as e:
-                last_error = f"SMTP error: {str(e)}"
-                print(f"[OTP ERROR] {last_error}")
-        else:
-            if not last_error:
-                last_error = "Neither Resend nor SMTP configurations are complete in the .env file."
-
-    # Return status depending on dev mode
+    # Strict return: returns False if Resend fails to send the email
     if sent_successfully:
-        return True, otp_dev_mode, None
+        return True, False, None
     else:
-        if otp_dev_mode:
-            print(f"[OTP DEV MODE WARNING] Failed to send email, but allowing dev mode bypass. Error: {last_error}")
-            return True, True, None
         return False, False, last_error
 
 
@@ -1005,11 +963,14 @@ Instructions:
 def open_browser(port):
     threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
 
+
 if __name__ == '__main__':
-    # Dynamically bind to Railway's assigned port, defaulting to 5002 locally
+    
     port = int(os.environ.get("PORT", 5002))
     
-    # Start the Flask production instance directly without executing system GUI commands
+    if "PORT" not in os.environ:
+        open_browser(port)
+    
     app.run(host='0.0.0.0', port=port, debug=False)
 
 
