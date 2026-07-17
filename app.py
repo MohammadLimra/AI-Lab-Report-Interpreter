@@ -77,9 +77,8 @@ def login_required(f):
     return decorated_function
 
 def send_otp_email(recipient_email, otp_code):
-    otp_dev_mode = os.environ.get("OTP_DEV_MODE", "true").lower() == "true"
-    if otp_dev_mode:
-        print(f"\n[OTP DEV MODE] Verification code for {recipient_email} is: {otp_code}\n")
+    # Forced to False for strict production behavior
+    otp_dev_mode = False 
     
     last_error = None
     sent_successfully = False
@@ -91,7 +90,7 @@ def send_otp_email(recipient_email, otp_code):
     if resend_api_key and otp_from_email:
         try:
             import requests as python_requests
-            url = "https://api.resend.com/emails"
+            url = "https://resend.com"
             headers = {
                 "Authorization": f"Bearer {resend_api_key}",
                 "Content-Type": "application/json"
@@ -113,7 +112,7 @@ def send_otp_email(recipient_email, otp_code):
                 """
             }
             response = python_requests.post(url, headers=headers, json=payload, timeout=10)
-            if response.status_code in [200, 201]:
+            if response.status_code in:
                 print(f"[OTP] Successfully sent verification code to {recipient_email} via Resend")
                 sent_successfully = True
             else:
@@ -174,14 +173,12 @@ Medical Report Interpreter Team"""
             if not last_error:
                 last_error = "Neither Resend nor SMTP configurations are complete in the .env file."
 
-    # Return status depending on dev mode
+    # Strict Production Returns (No fallback)
     if sent_successfully:
-        return True, otp_dev_mode, None
+        return True, False, None
     else:
-        if otp_dev_mode:
-            print(f"[OTP DEV MODE WARNING] Failed to send email, but allowing dev mode bypass. Error: {last_error}")
-            return True, True, None
         return False, False, last_error
+
 
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
