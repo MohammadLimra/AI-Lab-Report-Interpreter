@@ -1005,14 +1005,11 @@ Instructions:
 def open_browser(port):
     threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
 
-
 if __name__ == '__main__':
-    
+    # Dynamically bind to Railway's assigned port, defaulting to 5002 locally
     port = int(os.environ.get("PORT", 5002))
     
-    if "PORT" not in os.environ:
-        open_browser(port)
-    
+    # Start the Flask production instance directly without executing system GUI commands
     app.run(host='0.0.0.0', port=port, debug=False)
 
 
