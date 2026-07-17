@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — AI Lab Report Interpreter</title>
+    <script>
+      (function() {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<div class="auth-container">
+    <div class="auth-card">
+        
+        <div class="auth-brand">
+            <img class="auth-logo" src="{{ url_for('static', filename='logo.png') }}" alt="AI Lab Report Interpreter Logo">
+            <div class="auth-brand-text" style="font-size: 1.5rem; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;">AI Lab Report Interpreter</div>
+            <div class="auth-brand-sub">Clinical Insights Co-pilot</div>
+            <svg class="waveform" viewBox="0 0 260 22" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M0,11 L40,11 L48,2 L56,20 L64,11 L100,11 L108,4 L116,18 L124,11 L260,11"/>
+            </svg>
+        </div>
+
+        
+        <div id="stepEmail" class="auth-step active">
+            <h2 class="auth-title">Welcome back</h2>
+            <p class="auth-description">Enter your Gmail or email address to sign in or create an account via a one-time verification code.</p>
+            
+            
+            {% if google_client_id %}
+            <div id="g_id_onload"
+                 data-client_id="{{ google_client_id }}"
+                 data-context="signin"
+                 data-ux_mode="popup"
+                 data-callback="handleGoogleSignIn"
+                 data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin"
+                 data-type="standard"
+                 data-shape="rectangular"
+                 data-theme="dark"
+                 data-text="signin_with"
+                 data-size="large"
+                 data-logo_alignment="left"
+                 style="display: flex; justify-content: center; margin-bottom: 20px; width: 100%;">
+            </div>
+            
+            <div class="or-separator" style="display: flex; align-items: center; justify-content: center; margin: 15px 0; gap: 10px; width: 100%;">
+                <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+                <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">or</span>
+                <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+            </div>
+            {% endif %}
+            
+            <form id="emailForm" onsubmit="handleSendOtp(event)">
+                <div class="input-group">
+                    <label for="userEmail" class="input-label">Email address</label>
+                    <input type="text" id="userEmail" class="auth-input" placeholder="you@gmail.com" required autocomplete="email">
+                </div>
+                <button type="submit" id="btnSendOtp" class="btn-primary auth-btn">
+                    <span>Send verification code</span>
+                    <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </button>
+                <div class="skip-container" style="text-align: center; margin-top: 15px;">
+                    <a href="/" class="btn-link" style="font-size: 0.85rem; font-weight: 500;">Continue as Guest</a>
+                </div>
+            </form>
+        </div>
+
+        
+        <div id="stepOtp" class="auth-step">
+            <div class="back-nav" onclick="goToStep('email')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                <span>Change email</span>
+            </div>
+            
+            <h2 class="auth-title">Verify your email</h2>
+            <p class="auth-description">We've sent a 6-digit code to <strong id="displayTargetEmail" class="gradient-text">your email</strong>. Please enter it below.</p>
+            
+            <form id="otpForm" onsubmit="handleVerifyOtp(event)">
+                <div class="otp-inputs-wrapper">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" required aria-label="Digit 1">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" required aria-label="Digit 2">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" required aria-label="Digit 3">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" required aria-label="Digit 4">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" required aria-label="Digit 5">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" required aria-label="Digit 6">
+                </div>
+                
+                <input type="hidden" id="otpCompiledCode">
+                
+                <button type="submit" id="btnVerifyOtp" class="btn-primary auth-btn">
+                    <span>Verify and sign in</span>
+                    <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </button>
+            </form>
+            <div class="resend-container">
+                <span class="resend-text">Didn't receive the email?</span>
+                <button type="button" class="btn-link" id="btnResendOtp" onclick="resendOtp()">Resend code</button>
+            </div>
+        </div>
+
+
+        
+        <div id="authAlert" class="auth-alert"></div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+</body>
+</html>

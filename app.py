@@ -1,0 +1,1030 @@
+import os
+import io
+import base64
+import uuid
+import json
+import threading
+import webbrowser
+import random
+import re
+from datetime import datetime
+from functools import wraps
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+from flask import Flask, render_template, request, jsonify, session, Response, redirect, url_for
+from werkzeug.utils import secure_filename
+
+import pytesseract
+from PIL import Image
+from pdf2image import convert_from_path
+import PyPDF2
+from groq import Groq
+from medical_kb import retrieve_guidelines
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
+from database import (
+    init_db,
+    create_user,
+    get_user_by_email,
+    save_otp,
+    verify_otp,
+    verify_otp_status,
+    get_active_otp,
+    extend_otp_expiry,
+    load_history_for_user,
+    save_history_for_user,
+    delete_history_item_for_user,
+    migrate_guest_history
+)
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "doctor-time-saver-secret-key")
+
+OTP_CONFIG = {
+    "otp_length": 6,
+    "expires_in": 300,                 
+    "allowed_attempts": 3,             
+    "resend_strategy": "reuse",        
+    "store_otp_method": "encrypt"      
+}
+
+
+init_db()
+
+@app.before_request
+def ensure_session_id():
+    
+    if "user_id" not in session and "guest_id" not in session:
+        session["guest_id"] = f"guest_{uuid.uuid4()}"
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            if request.path.startswith("/api/") or request.path in ["/history", "/analyze"]:
+                return jsonify({"success": False, "error": "Unauthorized"}), 401
+            return redirect(url_for("auth_page"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def send_otp_email(recipient_email, otp_code):
+    otp_dev_mode = os.environ.get("OTP_DEV_MODE", "true").lower() == "true"
+    if otp_dev_mode:
+        print(f"\n[OTP DEV MODE] Verification code for {recipient_email} is: {otp_code}\n")
+    
+    last_error = None
+    sent_successfully = False
+
+    # 1. Try Resend API
+    resend_api_key = os.environ.get("RESEND_API_KEY")
+    otp_from_email = os.environ.get("OTP_FROM_EMAIL")
+    
+    if resend_api_key and otp_from_email:
+        try:
+            import requests as python_requests
+            url = "https://api.resend.com/emails"
+            headers = {
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "from": otp_from_email,
+                "to": recipient_email,
+                "subject": "Your Medical Report Interpreter Verification Code",
+                "html": f"""
+                <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+                    <h2 style="color: #333;">Medical Report Interpreter</h2>
+                    <p>Hello,</p>
+                    <p>Your verification code is:</p>
+                    <h1 style="color: #4F46E5; font-size: 32px; letter-spacing: 2px; margin: 20px 0;">{otp_code}</h1>
+                    <p>This code is valid for 5 minutes. If you did not request this, you can safely ignore this email.</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                    <p style="font-size: 12px; color: #666;">This is an automated message. Please do not reply to this email.</p>
+                </div>
+                """
+            }
+            response = python_requests.post(url, headers=headers, json=payload, timeout=10)
+            if response.status_code in [200, 201]:
+                print(f"[OTP] Successfully sent verification code to {recipient_email} via Resend")
+                sent_successfully = True
+            else:
+                try:
+                    err_json = response.json()
+                    resend_msg = err_json.get("message", response.text)
+                except Exception:
+                    resend_msg = response.text
+                last_error = f"Resend API error: {resend_msg}"
+                print(f"[OTP ERROR] {last_error}")
+        except Exception as e:
+            last_error = f"Resend API exception: {str(e)}"
+            print(f"[OTP ERROR] {last_error}")
+            
+    # 2. Try SMTP fallback if not sent yet
+    if not sent_successfully:
+        smtp_server = os.environ.get("SMTP_SERVER")
+        smtp_port = os.environ.get("SMTP_PORT")
+        smtp_username = os.environ.get("SMTP_USERNAME")
+        smtp_password = os.environ.get("SMTP_PASSWORD")
+        smtp_sender = os.environ.get("SMTP_SENDER") or smtp_username
+
+        if all([smtp_server, smtp_port, smtp_username, smtp_password]):
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = smtp_sender
+                msg['To'] = recipient_email
+                msg['Subject'] = "Your Medical Report Interpreter Verification Code"
+
+                body = f"""Hello,
+
+Your verification code is: {otp_code}
+
+This code is valid for 5 minutes. If you did not request this code, please ignore this email.
+
+Best regards,
+Medical Report Interpreter Team"""
+                
+                msg.attach(MIMEText(body, 'plain'))
+
+                port = int(smtp_port)
+                if port == 465:
+                    server = smtplib.SMTP_SSL(smtp_server, port)
+                else:
+                    server = smtplib.SMTP(smtp_server, port)
+                    server.starttls()
+
+                server.login(smtp_username, smtp_password)
+                server.sendmail(smtp_sender, recipient_email, msg.as_string())
+                server.quit()
+
+                print(f"[OTP] Successfully sent verification code to {recipient_email} via SMTP")
+                sent_successfully = True
+            except Exception as e:
+                last_error = f"SMTP error: {str(e)}"
+                print(f"[OTP ERROR] {last_error}")
+        else:
+            if not last_error:
+                last_error = "Neither Resend nor SMTP configurations are complete in the .env file."
+
+    # Return status depending on dev mode
+    if sent_successfully:
+        return True, otp_dev_mode, None
+    else:
+        if otp_dev_mode:
+            print(f"[OTP DEV MODE WARNING] Failed to send email, but allowing dev mode bypass. Error: {last_error}")
+            return True, True, None
+        return False, False, last_error
+
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf"}
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+HISTORY_FILE = os.path.join(os.path.dirname(__file__), "history.json")
+MAX_HISTORY_ITEMS = 50
+
+
+def load_history() -> list:
+    identifier = session.get("user_id") or session.get("guest_id")
+    if not identifier:
+        return []
+    return load_history_for_user(identifier)
+
+
+def save_history(entry: dict, identifier: str = None) -> None:
+    if not identifier:
+        try:
+            identifier = session.get("user_id") or session.get("guest_id")
+        except RuntimeError:
+            return
+    if not identifier:
+        return
+    save_history_for_user(identifier, entry)
+
+
+def summarize_for_history(analysis_text: str, max_len: int = 90) -> str:
+    for line in analysis_text.splitlines():
+        clean = line.strip().lstrip("#").lstrip("-").strip()
+        clean = clean.replace("*", "").strip()
+        if len(clean) > 3:
+            return clean[:max_len] + ("…" if len(clean) > max_len else "")
+    return "Analysis result"
+
+
+def clean_analysis_text(text: str) -> str:
+    if not text:
+        return text
+    import re
+    
+    
+    text = re.sub(
+        r"^(?:Based on the|This is an|I have analyzed|Here is).*?(?:(?:\*\*\*|---|___)+|(?:###|##|#)+)\s*(?:Summary|Interpretation|Detailed|📋|📄).*?(?:Report|Findings|Results|Analysis)(?: Findings)?\s*\n*",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    
+    
+    parts = re.split(r'\n*(?:\*\*\*|---|___)\n*', text)
+    if len(parts) > 1:
+        last_part = parts[-1].strip()
+        disclaimer_keywords = ["ai", "doctor", "physician", "medical advice", "diagnosis", "disclaimer", "not a medical", "clinical correlation"]
+        lower_last = last_part.lower()
+        if any(kw in lower_last for kw in disclaimer_keywords) and (
+            lower_last.startswith("disclaimer") or 
+            lower_last.startswith("**disclaimer") or
+            lower_last.startswith("###") or
+            lower_last.startswith("##") or
+            lower_last.startswith("#") or
+            lower_last.startswith("⚠️") or
+            lower_last.startswith("🚨") or
+            lower_last.startswith("🛑") or
+            lower_last.startswith("important") or
+            lower_last.startswith("note") or
+            lower_last.startswith("**note") or
+            lower_last.startswith("warning") or
+            lower_last.startswith("reminder") or
+            lower_last.startswith("caveat") or
+            "i am an ai" in lower_last or
+            "not replace a consultation" in lower_last or
+            "cannot replace a consultation" in lower_last
+        ):
+            text = "***".join(parts[:-1]).strip()
+            
+    
+    text = re.sub(
+        r"\n*(?:\*\*\*|---|___)?\s*(?:###|##|#)?\s*(?:\*\*)?(?:⚠️|🚨|🛑)?\s*(?:Important\s+)?Disclaimer(?:\*\*)?(?::)?\s*.*$",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    
+    text = re.sub(
+        r"\n*(?:\*\*\*|---|___)?\s*(?:###|##|#)?\s*(?:\*\*)?(?:⚠️|🚨|🛑)?\s*Important\s+(?:Disclaimer|Note|Reminder|Warning|Caveats|Medical Disclaimer)(?:\*\*)?(?::)?\s*.*$",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    
+    text = re.sub(
+        r"\n*(?:\*\*\*|---|___)?\s*Please remember that\s*(?:\*\*)?I am an AI assistant\s*not a medical doctor.*$",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    text = re.sub(r"\n*(?:\*\*\*|---|___)\s*$", "", text)
+    return text.strip()
+
+
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+try:
+    ai_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+except Exception:
+    ai_client = None
+
+MODEL_NAME = "llama-3.1-8b-instant"
+
+
+def is_ollama_available() -> bool:
+    global ai_client
+    if not ai_client:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+        except ImportError:
+            pass
+        key = os.environ.get("GROQ_API_KEY")
+        if key:
+            try:
+                ai_client = Groq(api_key=key)
+            except Exception:
+                pass
+    return ai_client is not None
+
+
+def model_supports_vision() -> bool:
+    return False
+
+
+SYSTEM_PROMPT = """AI Lab Report Interpreter" - a general medical report analysis assistant.
+
+You must read the medical report text/image and interpret it.
+Your job is to:
+1. Start your response DIRECTLY with the test analysis. Do NOT include any conversational introduction, greetings, headers, or introductory paragraphs. Jump straight to the list of parameters.
+2. Go through EACH test/parameter mentioned in the report. For each one, clearly state the value, the normal reference range, and whether it is ✅ Normal, ⚠️ Low, or 🔴 High.
+   Format each parameter exactly like this:
+   - **Test Name**: [Your Value] (Reference Range: [Range]) — [Status Symbol] [Normal / Low / High]
+     *Note: [Brief 1-sentence explanation of what it means (only include this note for abnormal values to keep generation fast)]*
+3. Mention possible diagnoses or patterns suggested by the overall results (e.g. "this pattern can be seen in...") ONLY if strongly supported.
+4. Keep the output extremely short, clear, and direct. Do NOT include any extra details, general health tips, unsolicited advice, or conversational filler.
+5. If the report has multiple sections or pages, summarize all of them.
+
+Style Rules:
+- Respond in plain, simple English.
+- Use emojis for clarity (✅ ⚠️ 🔴).
+- Use headings and bullet points for readability.
+- Do NOT use math blocks, LaTeX formatting, or dollar signs ($). Write all measurements in plain text.
+- Do not assume the report is about any specific disease unless the actual values in front of you support that.
+- Start directly with the bulleted list of parameters. No intro or outro text whatsoever.
+"""
+
+
+def allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def extract_text_from_pil_image(img: Image.Image) -> str:
+    global ai_client
+    if not ai_client:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+        except ImportError:
+            pass
+        key = os.environ.get("GROQ_API_KEY")
+        if key:
+            try:
+                ai_client = Groq(api_key=key)
+            except Exception:
+                pass
+    if not ai_client:
+        return "[OCR ERROR: Tesseract OCR binary is missing on the server, and Groq API key is not configured for remote vision extraction.]"
+
+    try:
+        
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            img = img.convert("RGBA")
+            background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            alpha_composite = Image.alpha_composite(background, img)
+            img = alpha_composite.convert("RGB")
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        
+        
+        MAX_PIXELS = 20000000
+        width, height = img.size
+        total_pixels = width * height
+        if total_pixels > MAX_PIXELS:
+            scale_factor = (MAX_PIXELS / total_pixels) ** 0.5
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            try:
+                resample_filter = Image.Resampling.LANCZOS
+            except AttributeError:
+                resample_filter = Image.LANCZOS
+            img = img.resize((new_width, new_height), resample_filter)
+
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        response = ai_client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Please transcribe all readable text, values, parameters, and reference ranges from this medical lab report image. Output only the transcribed text. Do not add any conversational text, explanation, warnings, or formatting wrappers."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{img_base64}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            temperature=0.0
+        )
+        text = response.choices[0].message.content or ""
+        return text.strip()
+    except Exception as e:
+        return f"[OCR ERROR: Failed to extract text via vision model: {str(e)}]"
+
+
+def redact_personal_info(text: str) -> str:
+    if not text:
+        return text
+    
+    text = re.sub(r'[\w\.-]+@[\w\.-]+\.\w+', '[REDACTED EMAIL]', text)
+    
+    text = re.sub(r'\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b', '[REDACTED PHONE]', text)
+    
+    text = re.sub(r'(?i)(patient\s*name|patient\s*:\s*|name\s*:\s*)([^\n,;]+)', r'\1[REDACTED NAME]', text)
+    
+    text = re.sub(r'(?i)(date\s*of\s*birth|dob\s*:\s*|birth\s*date\s*:\s*)([^\n,;]+)', r'\1[REDACTED DOB]', text)
+    
+    text = re.sub(r'(?i)(address\s*:\s*)([^\n]+)', r'\1[REDACTED ADDRESS]', text)
+    
+    text = re.sub(r'\b\d{3}-\d{2}-\d{4}\b', '[REDACTED ID]', text)
+    return text
+
+
+def extract_text_from_image(image_path: str) -> str:
+    import shutil
+    has_tesseract = shutil.which("tesseract") is not None
+    if has_tesseract:
+        try:
+            img = Image.open(image_path)
+            text = pytesseract.image_to_string(img, lang="eng", timeout=20)
+            return text.strip()
+        except Exception:
+            pass
+            
+    try:
+        img = Image.open(image_path)
+        return extract_text_from_pil_image(img)
+    except Exception as e:
+        return f"[OCR ERROR: {e}]"
+
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    extracted_text = ""
+    try:
+        with open(pdf_path, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            for i, page in enumerate(reader.pages):
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    if len(reader.pages) > 1:
+                        extracted_text += f"\n--- Page {i+1} ---\n"
+                    extracted_text += page_text
+        if extracted_text.strip():
+            return extracted_text.strip()
+    except Exception:
+        pass
+
+    
+    import shutil
+    has_tesseract = shutil.which("tesseract") is not None
+    has_pdftoppm = shutil.which("pdftoppm") is not None
+    
+    if not has_pdftoppm:
+        return "[ERROR: The PDF has no selectable text, and server-side PDF-to-image conversion tools are not installed. Please upload your document as an image file (PNG/JPG) instead.]"
+
+    try:
+        pages = convert_from_path(pdf_path, 150)
+        for i, page in enumerate(pages):
+            if has_tesseract:
+                try:
+                    text = pytesseract.image_to_string(page, lang="eng", timeout=20)
+                except Exception:
+                    text = extract_text_from_pil_image(page)
+            else:
+                text = extract_text_from_pil_image(page)
+                
+            if len(pages) > 1:
+                extracted_text += f"\n--- Page {i+1} ---\n"
+            extracted_text += text
+        return extracted_text.strip()
+    except Exception as e:
+        return f"[PDF OCR ERROR: {e}]"
+
+
+@app.route("/auth")
+def auth_page():
+    if "user_id" in session:
+        return redirect(url_for("index"))
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    return render_template("auth.html", google_client_id=google_client_id)
+
+
+
+@app.route("/api/auth/send-otp", methods=["POST"])
+def send_otp():
+    data = request.json or {}
+    email = data.get("email", "").strip()
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+        
+    if "@" not in email:
+        email += "@gmail.com"
+        
+    if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+        return jsonify({"success": False, "error": "Invalid email address"}), 400
+        
+    otp_code = None
+    resend_strat = OTP_CONFIG.get("resend_strategy", "rotate")
+    store_method = OTP_CONFIG.get("store_otp_method", "plain")
+    secret_key = app.secret_key
+    
+    
+    if resend_strat == "reuse" and store_method != "hash":
+        active_otp_rec = get_active_otp(email)
+        if active_otp_rec:
+            
+            if active_otp_rec.get("attempts", 0) < OTP_CONFIG.get("allowed_attempts", 3):
+                stored_otp_val = active_otp_rec["otp"]
+                try:
+                    if store_method == "encrypt":
+                        from database import decrypt_otp
+                        otp_code = decrypt_otp(stored_otp_val, secret_key)
+                    else:
+                        otp_code = stored_otp_val
+                    
+                    extend_otp_expiry(email, expires_in_seconds=OTP_CONFIG.get("expires_in", 300))
+                except Exception:
+                    otp_code = None
+                    
+    if not otp_code:
+        
+        otp_len = OTP_CONFIG.get("otp_length", 6)
+        if otp_len == 8:
+            otp_code = f"{random.randint(10000000, 99999999)}"
+        else:
+            otp_code = f"{random.randint(100000, 999999)}"
+            
+        save_otp(
+            email=email, 
+            otp_code=otp_code, 
+            store_method=store_method, 
+            expires_in_seconds=OTP_CONFIG.get("expires_in", 300),
+            secret_key=secret_key
+        )
+    
+    success, dev_mode, error_message = send_otp_email(email, otp_code)
+    if not success:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to send verification email. {error_message or ''}".strip()
+        }), 500
+    
+    return jsonify({
+        "success": True
+    })
+
+
+@app.route("/api/auth/verify-otp", methods=["POST"])
+def verify_otp_route():
+    data = request.json or {}
+    email = data.get("email", "").strip()
+    otp_code = data.get("otp", "").strip()
+    
+    if not email or not otp_code:
+        return jsonify({"success": False, "error": "Email and OTP are required"}), 400
+        
+    if "@" not in email:
+        email += "@gmail.com"
+        
+    is_valid, error_code = verify_otp_status(
+        email=email, 
+        otp_code=otp_code, 
+        allowed_attempts=OTP_CONFIG.get("allowed_attempts", 3),
+        secret_key=app.secret_key
+    )
+    if not is_valid:
+        if error_code == "TOO_MANY_ATTEMPTS":
+            return jsonify({
+                "success": False, 
+                "error": "TOO_MANY_ATTEMPTS",
+                "message": "Too many failed verification attempts. This code is now invalid. Please request a new one."
+            }), 429
+        return jsonify({"success": False, "error": "Invalid or expired verification code"}), 400
+        
+    user = get_user_by_email(email)
+    is_new_user = user is None
+    
+    user_id = create_user(email)
+    
+    
+    session.pop("guest_id", None)
+            
+    session["user_id"] = user_id
+    session["user_email"] = email
+            
+    return jsonify({
+        "success": True, 
+        "user": {
+            "id": user_id,
+            "email": email
+        }
+    })
+
+
+@app.route("/api/auth/google", methods=["POST"])
+def google_auth():
+    data = request.json or {}
+    token = data.get("id_token")
+    if not token:
+        return jsonify({"success": False, "error": "ID Token is required"}), 400
+        
+    client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return jsonify({"success": False, "error": "Google Client ID is not configured on the server"}), 500
+        
+    try:
+        
+        id_info = id_token.verify_oauth2_token(token, requests.Request(), client_id)
+        
+        
+        if not id_info.get("email_verified"):
+            return jsonify({"success": False, "error": "Google email not verified"}), 400
+            
+        email = id_info.get("email")
+        if not email:
+            return jsonify({"success": False, "error": "Email not found in Google token"}), 400
+            
+        
+        user_id = create_user(email)
+        
+        
+        session.pop("guest_id", None)
+        session["user_id"] = user_id
+        session["user_email"] = email
+        
+        return jsonify({
+            "success": True,
+            "user": {
+                "id": user_id,
+                "email": email
+            }
+        })
+        
+    except ValueError as e:
+        
+        return jsonify({"success": False, "error": f"Invalid Google token: {str(e)}"}), 400
+
+
+@app.route("/api/auth/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("auth_page"))
+
+
+@app.route("/")
+def index():
+    history = load_history()
+    return render_template("index.html", history=history)
+
+
+@app.route("/health")
+def health():
+    available = is_ollama_available()
+    supports_vision = model_supports_vision()
+    return jsonify({
+        "ollama_available": available,
+        "model": MODEL_NAME,
+        "vision_supported": supports_vision
+    })
+
+
+@app.route("/history")
+def history():
+    raw_history = load_history()
+    normalized_history = []
+    for item in raw_history:
+        analysis = clean_analysis_text(item.get("analysis", ""))
+        title = clean_analysis_text(item.get("title") or item.get("summary") or summarize_for_history(analysis))
+        source_name = item.get("source_name") or item.get("filename") or "Pasted text"
+        timestamp_display = item.get("timestamp_display") or item.get("timestamp") or ""
+        timestamp = item.get("timestamp") or timestamp_display or ""
+        
+        normalized_history.append({
+            "id": item.get("id"),
+            "title": title,
+            "source_name": source_name,
+            "question": item.get("question", ""),
+            "analysis": analysis,
+            "extracted_text": item.get("extracted_text", ""),
+            "timestamp": timestamp,
+            "timestamp_display": timestamp_display
+        })
+    return jsonify({"history": normalized_history})
+
+
+@app.route("/api/trends")
+def get_trends():
+    raw_history = load_history()
+    try:
+        raw_history = sorted(raw_history, key=lambda x: x.get("timestamp", ""))
+    except Exception:
+        pass
+        
+    trends = {}
+    for item in raw_history:
+        analysis = item.get("analysis", "")
+        date_str = item.get("timestamp_display", "")
+        if not date_str:
+            date_str = item.get("timestamp", "")[:10] if item.get("timestamp") else "Unknown"
+        else:
+            date_str = date_str.split(" ")[0]
+            
+        lines = analysis.split("\n")
+        for line in lines:
+            line = line.strip()
+            match = re.match(r'^[-*]\s+\*\*(.*?)\*\*:\s*(.*?)\s*\((?:Reference Range:\s*)?(.*?)\)\s*—\s*(?:✅|⚠️|🔴|🛑)\s*([a-zA-Z-/ ]+)', line, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                val_str = match.group(2).strip()
+                range_str = match.group(3).strip()
+                status = match.group(4).strip().lower()
+                
+                num_val_match = re.search(r'([-+]?\d*\.\d+|\b\d+\b)', val_str)
+                if num_val_match:
+                    try:
+                        num_val = float(num_val_match.group(1))
+                    except ValueError:
+                        continue
+                    
+                    if name not in trends:
+                        trends[name] = []
+                    trends[name].append({
+                        "date": date_str,
+                        "value": num_val,
+                        "value_str": val_str,
+                        "range": range_str,
+                        "status": status
+                    })
+                    
+    return jsonify({
+        "success": True,
+        "trends": trends
+    })
+
+
+@app.route("/history/<item_id>", methods=["DELETE"])
+def delete_history_item(item_id):
+    try:
+        identifier = session.get("user_id") or session.get("guest_id")
+        if not identifier:
+            return jsonify({"success": False, "error": "No session"}), 400
+        delete_history_item_for_user(identifier, item_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    user_identifier = session.get("user_id") or session.get("guest_id")
+    question = request.form.get("question", "").strip()
+    
+    extracted_text = ""
+    filename = ""
+    img_base64 = None
+    ext = ""
+    filepath = ""
+    
+    if "file" in request.files:
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"success": False, "error": "No file selected"}), 400
+            
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(filepath)
+            
+            ext = filename.rsplit(".", 1)[1].lower()
+            
+            if ext in ["png", "jpg", "jpeg"]:
+                if model_supports_vision():
+                    try:
+                        with open(filepath, "rb") as f:
+                            img_base64 = base64.b64encode(f.read()).decode("utf-8")
+                    except Exception as e:
+                        return jsonify({"success": False, "error": f"Failed to read image: {str(e)}"}), 500
+                else:
+                    extracted_text = extract_text_from_image(filepath)
+            elif ext == "pdf":
+                extracted_text = extract_text_from_pdf(filepath)
+        else:
+            return jsonify({"success": False, "error": "Invalid file type"}), 400
+    elif "report_text" in request.form:
+        extracted_text = request.form.get("report_text", "").strip()
+        filename = ""
+    else:
+        return jsonify({"success": False, "error": "No file or text provided"}), 400
+        
+    if extracted_text:
+        if extracted_text.startswith("[ERROR:") or extracted_text.startswith("[OCR ERROR:") or extracted_text.startswith("[PDF OCR ERROR:"):
+            error_msg = extracted_text.strip("[]")
+            if "tesseract not found" in error_msg.lower() or "tesseract is not installed" in error_msg.lower():
+                error_msg = "Tesseract OCR binary is missing on the server. Please install Tesseract or upload your document as an image file (PNG/JPG)."
+            return jsonify({"success": False, "error": error_msg}), 400
+
+    def generate_stream():
+        yield json.dumps({"event": "extracted_text", "text": extracted_text}) + "\n"
+        
+        global ai_client
+        if not ai_client:
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(override=True)
+            except ImportError:
+                pass
+            key = os.environ.get("GROQ_API_KEY")
+            if key:
+                try:
+                    ai_client = Groq(api_key=key)
+                except Exception:
+                    pass
+
+        if not ai_client:
+            yield json.dumps({"event": "error", "error": "Groq API key is not set. Please set the GROQ_API_KEY environment variable."}) + "\n"
+            return
+
+        analysis = ""
+        try:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT}
+            ]
+            
+            redacted_text = redact_personal_info(extracted_text)
+            prompt = f"Report Text Content:\n{redacted_text}"
+            if question:
+                prompt += f"\n\nFocus especially on this question from the user: {question}"
+            messages.append({"role": "user", "content": prompt})
+
+            response_stream = ai_client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages,
+                temperature=0.0,
+                stream=True
+            )
+
+            for chunk in response_stream:
+                token = chunk.choices[0].delta.content or ""
+                analysis += token
+                yield json.dumps({"event": "token", "text": token}) + "\n"
+                
+        except Exception as e:
+            yield json.dumps({"event": "error", "error": f"Groq error: {str(e)}"}) + "\n"
+            return
+
+        analysis = clean_analysis_text(analysis)
+        
+        timestamp_raw = datetime.now().isoformat()
+        timestamp_disp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        source_name = filename if filename else "Pasted text"
+        title = summarize_for_history(analysis)
+        
+        new_id = str(uuid.uuid4())
+        history_entry = {
+            "id": new_id,
+            "title": title,
+            "source_name": source_name,
+            "question": question,
+            "analysis": analysis,
+            "extracted_text": extracted_text,
+            "timestamp": timestamp_raw,
+            "timestamp_display": timestamp_disp
+        }
+        
+        save_history(history_entry, identifier=user_identifier)
+        
+        yield json.dumps({
+            "event": "done",
+            "history_id": new_id,
+            "timestamp": timestamp_disp,
+            "analysis": analysis
+        }) + "\n"
+
+    return Response(generate_stream(), mimetype="application/x-ndjson")
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    try:
+        data = request.json or {}
+        question = data.get("question", "").strip()
+        report_text = data.get("report_text", "").strip()
+        analysis = data.get("analysis", "").strip()
+        history = data.get("history", [])
+
+        if not question:
+            return jsonify({"success": False, "error": "No question provided"}), 400
+
+        
+        retrieved = retrieve_guidelines(question, report_text or analysis)
+        
+        
+        guidelines_context = ""
+        retrieved_meta = []
+        for g in retrieved:
+            guidelines_context += f"### {g['title']}\n{g['content']}\n\n"
+            retrieved_meta.append({
+                "id": g["id"],
+                "title": g["title"]
+            })
+
+        
+        system_prompt = f"""You are "AI Patient Assistant", a precise and highly accurate assistant.
+Your role is to answer the patient's specific question regarding their lab report directly, concisely, and with maximum accuracy.
+
+Retrieved guidelines for context:
+{guidelines_context or "No specific guidelines."}
+
+Patient's Lab Report Text:
+{report_text or "No report text."}
+
+Initial Report Analysis:
+{analysis or "No initial analysis."}
+
+Instructions:
+1. Answer the patient's question directly, clearly, and concisely: "{question}"
+2. Ground your answer strictly and ONLY on the provided Lab Report Text, Initial Report Analysis, and the retrieved Guidelines. Do NOT assume, extrapolate, speculate, or introduce any external information.
+3. If the user's message is a greeting, thank you, or polite remark, reply politely and directly in a single brief sentence (e.g., "You're welcome! Let me know if you have any other questions.").
+4. Otherwise, start directly with the answer. Do NOT include greetings, conversational filler, introductory remarks, or small talk.
+5. Only address the specific question asked. Do not provide extra details, general warnings, unrelated guidance, or unsolicited lifestyle advice unless it directly answers the question.
+6. Keep the response as brief as possible, using short direct bullet points or simple sentences.
+7. Do NOT use LaTeX, math blocks, or dollar signs.
+8. Do NOT append long disclaimer blocks or warning paragraphs at the end. Keep it to a single brief sentence if absolutely necessary, or omit entirely.
+"""
+
+        
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+        
+        
+        for msg in history:
+            messages.append({
+                "role": msg.get("role"),
+                "content": msg.get("content")
+            })
+            
+        
+        messages.append({"role": "user", "content": question})
+
+        def chat_stream():
+            reply = ""
+            global ai_client
+            if not ai_client:
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv(override=True)
+                except ImportError:
+                    pass
+                key = os.environ.get("GROQ_API_KEY")
+                if key:
+                    try:
+                        ai_client = Groq(api_key=key)
+                    except Exception:
+                        pass
+
+            if not ai_client:
+                yield json.dumps({"event": "error", "error": "Groq API key is not set. Please set the GROQ_API_KEY environment variable."}) + "\n"
+                return
+
+            try:
+                response_stream = ai_client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=messages,
+                    temperature=0.0,
+                    stream=True
+                )
+                for chunk in response_stream:
+                    token = chunk.choices[0].delta.content or ""
+                    reply += token
+                    yield json.dumps({"event": "token", "text": token}) + "\n"
+            except Exception as e:
+                yield json.dumps({"event": "error", "error": f"Failed to get response: {str(e)}"}) + "\n"
+                return
+
+            reply = clean_analysis_text(reply)
+            yield json.dumps({
+                "event": "done",
+                "response": reply,
+                "retrieved_guidelines": retrieved_meta
+            }) + "\n"
+
+        return Response(chat_stream(), mimetype="application/x-ndjson")
+
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Failed to get response: {str(e)}"}), 500
+
+
+def open_browser(port):
+    threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
+
+
+if __name__ == '__main__':
+    
+    port = int(os.environ.get("PORT", 5002))
+    
+    if "PORT" not in os.environ:
+        open_browser(port)
+    
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+
+    
