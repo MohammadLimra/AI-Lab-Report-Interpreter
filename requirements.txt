@@ -9,5 +9,6 @@ gunicorn
 cryptography
 google-auth
 requests
-resend
+
+
 
