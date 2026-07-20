@@ -42,8 +42,11 @@ from database import (
     migrate_guest_history
 )
 
+from flask_cors import CORS
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "doctor-time-saver-secret-key")
+CORS(app)
 
 OTP_CONFIG = {
     "otp_length": 6,
@@ -433,7 +436,7 @@ def logout():
     return redirect(url_for("index"))
 
 
-@app.route("/api/auth/send-otp", methods=["POST"])
+@app.route("/send-otp", methods=["POST"])
 def send_otp():
     data = request.json or {}
     email = data.get("email", "").strip()
@@ -493,7 +496,7 @@ def send_otp():
     })
 
 
-@app.route("/api/auth/verify-otp", methods=["POST"])
+@app.route("/verify-otp", methods=["POST"])
 def verify_otp_route():
     data = request.json or {}
     email = data.get("email", "").strip()
