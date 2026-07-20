@@ -1,5 +1,3 @@
-
-
 body {
     display: flex;
     justify-content: center;
@@ -38,6 +36,7 @@ body {
         opacity: 0;
         transform: translateY(24px) scale(0.97);
     }
+
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
@@ -106,6 +105,7 @@ body {
         opacity: 0;
         transform: translateY(12px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -335,10 +335,10 @@ body {
     font-size: 1.1rem;
     font-weight: 700;
     color: #ffffff;
-    background: rgba(0,0,0,0.25);
+    background: rgba(0, 0, 0, 0.25);
     padding: 2px 8px;
     border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     letter-spacing: 1px;
 }
 
@@ -384,9 +384,21 @@ body {
 
 
 @keyframes alertShake {
-    0%, 100% { transform: translateX(0); }
-    20%, 60% { transform: translateX(-6px); }
-    40%, 80% { transform: translateX(6px); }
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    20%,
+    60% {
+        transform: translateX(-6px);
+    }
+
+    40%,
+    80% {
+        transform: translateX(6px);
+    }
 }
 
 
@@ -446,7 +458,50 @@ body {
 }
 
 @keyframes btn-shimmer {
-    0% { left: -150%; }
-    30% { left: 150%; }
-    100% { left: 150%; }
+    0% {
+        left: -150%;
+    }
+    30% {
+        left: 150%;
+    }
+    100% {
+        left: 150%;
+    }
+}
+
+.back-nav svg {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.back-nav:hover svg {
+    transform: translateX(-3px);
+}
+
+.waveform {
+    width: 100%;
+    height: 22px;
+    margin-top: 15px;
+}
+
+.waveform path {
+    stroke: var(--accent-cyan);
+    stroke-width: 2px;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 600;
+    stroke-dashoffset: 600;
+    animation: ecgPulse 4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+    opacity: 0.85;
+}
+
+@keyframes ecgPulse {
+    0% {
+        stroke-dashoffset: 600;
+    }
+    70% {
+        stroke-dashoffset: 0;
+    }
+    100% {
+        stroke-dashoffset: -600;
+    }
 }
