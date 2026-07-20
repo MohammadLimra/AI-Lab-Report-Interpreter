@@ -5,7 +5,11 @@ import uuid
 import json
 import threading
 import webbrowser
+import random
+import re
+import smtplib
 from datetime import datetime
+from functools import wraps
 
 try:
     from dotenv import load_dotenv
@@ -13,7 +17,7 @@ try:
 except ImportError:
     pass
 
-from flask import Flask, render_template, request, jsonify, session, Response
+from flask import Flask, render_template, request, jsonify, session, Response, redirect, url_for
 from werkzeug.utils import secure_filename
 
 import pytesseract
@@ -23,8 +27,33 @@ import PyPDF2
 from groq import Groq
 from medical_kb import retrieve_guidelines
 
+from database import (
+    init_db,
+    create_user,
+    get_user_by_email,
+    save_otp,
+    verify_otp,
+    verify_otp_status,
+    get_active_otp,
+    extend_otp_expiry,
+    load_history_for_user,
+    save_history_for_user,
+    delete_history_item_for_user,
+    migrate_guest_history
+)
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "doctor-time-saver-secret-key")
+
+OTP_CONFIG = {
+    "otp_length": 6,
+    "expires_in": 300,                 
+    "allowed_attempts": 3,             
+    "resend_strategy": "reuse",        
+    "store_otp_method": "encrypt"      
+}
+
+init_db()
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf"}
@@ -34,29 +63,87 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-HISTORY_FILE = os.path.join(os.path.dirname(__file__), "history.json")
-MAX_HISTORY_ITEMS = 50
+
+@app.before_request
+def ensure_session_id():
+    if "user_id" not in session and "guest_id" not in session:
+        session["guest_id"] = f"guest_{uuid.uuid4()}"
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            if request.path.startswith("/api/") or request.path in ["/history", "/analyze"]:
+                return jsonify({"success": False, "error": "Unauthorized"}), 401
+            return redirect(url_for("auth_page"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def send_otp_email(recipient_email, otp_code):
+    last_error = None
+    from_mail = os.getenv('EMAIL_USER') or os.getenv('SMTP_USERNAME') or os.getenv('SMTP_SENDER')
+    app_password = os.getenv('EMAIL_PASS') or os.getenv('SMTP_PASSWORD')
+
+    if not from_mail or not app_password:
+        return False, False, "EMAIL_USER/EMAIL_PASS (or SMTP_USERNAME/SMTP_PASSWORD) environment variables are missing!"
+
+    try:
+        from email.message import EmailMessage
+        # Connect to Gmail's SMTP Server
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(from_mail, app_password)
+
+        # Build the email message
+        msg = EmailMessage()
+        msg['Subject'] = "Your Medical Report Interpreter Verification Code"
+        msg['From'] = from_mail
+        msg['To'] = recipient_email
+        
+        # Build attractive HTML email content
+        html_content = f"""
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+            <h2 style="color: #333;">Medical Report Interpreter</h2>
+            <p>Hello,</p>
+            <p>Your verification code is:</p>
+            <h1 style="color: #4F46E5; font-size: 32px; letter-spacing: 2px; margin: 20px 0;">{otp_code}</h1>
+            <p>This code is valid for 5 minutes. If you did not request this, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #666;">This is an automated message. Please do not reply to this email.</p>
+        </div>
+        """
+        msg.set_content(f"Your verification code is: {otp_code}")
+        msg.add_alternative(html_content, subtype='html')
+
+        # Send it!
+        server.send_message(msg)
+        server.quit()
+        print(f"[OTP] Successfully sent verification code to {recipient_email} via SMTP")
+        return True, False, None
+    except Exception as e:
+        last_error = f"SMTP error: {str(e)}"
+        print(f"[OTP ERROR] {last_error}")
+        return False, False, last_error
 
 
 def load_history() -> list:
-    if not os.path.exists(HISTORY_FILE):
+    identifier = session.get("user_id") or session.get("guest_id")
+    if not identifier:
         return []
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    return load_history_for_user(identifier)
 
 
-def save_history(entry: dict) -> None:
-    try:
-        history = load_history()
-        history.insert(0, entry)
-        history = history[:MAX_HISTORY_ITEMS]
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+def save_history(entry: dict, identifier: str = None) -> None:
+    if not identifier:
+        try:
+            identifier = session.get("user_id") or session.get("guest_id")
+        except RuntimeError:
+            return
+    if not identifier:
+        return
+    save_history_for_user(identifier, entry)
 
 
 def summarize_for_history(analysis_text: str, max_len: int = 90) -> str:
@@ -132,7 +219,6 @@ def clean_analysis_text(text: str) -> str:
 
     text = re.sub(r"\n*(?:\*\*\*|---|___)\s*$", "", text)
     return text.strip()
-
 
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
@@ -327,9 +413,127 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
 
 @app.route("/")
+@login_required
 def index():
     history = load_history()
     return render_template("index.html", history=history)
+
+
+@app.route("/auth")
+def auth_page():
+    if "user_id" in session:
+        return redirect(url_for("index"))
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    return render_template("auth.html", google_client_id=google_client_id)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("auth_page"))
+
+
+@app.route("/api/auth/send-otp", methods=["POST"])
+def send_otp():
+    data = request.json or {}
+    email = data.get("email", "").strip()
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+        
+    if "@" not in email:
+        email += "@gmail.com"
+        
+    if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+        return jsonify({"success": False, "error": "Invalid email address"}), 400
+        
+    otp_code = None
+    resend_strat = OTP_CONFIG.get("resend_strategy", "rotate")
+    store_method = OTP_CONFIG.get("store_otp_method", "plain")
+    secret_key = app.secret_key
+    
+    if resend_strat == "reuse" and store_method != "hash":
+        active_otp_rec = get_active_otp(email)
+        if active_otp_rec:
+            if active_otp_rec.get("attempts", 0) < OTP_CONFIG.get("allowed_attempts", 3):
+                stored_otp_val = active_otp_rec["otp"]
+                try:
+                    if store_method == "encrypt":
+                        from database import decrypt_otp
+                        otp_code = decrypt_otp(stored_otp_val, secret_key)
+                    else:
+                        otp_code = stored_otp_val
+                    extend_otp_expiry(email, expires_in_seconds=OTP_CONFIG.get("expires_in", 300))
+                except Exception:
+                    otp_code = None
+                    
+    if not otp_code:
+        otp_len = OTP_CONFIG.get("otp_length", 6)
+        if otp_len == 8:
+            otp_code = f"{random.randint(10000000, 99999999)}"
+        else:
+            otp_code = f"{random.randint(100000, 999999)}"
+            
+        save_otp(
+            email=email, 
+            otp_code=otp_code, 
+            store_method=store_method, 
+            expires_in_seconds=OTP_CONFIG.get("expires_in", 300),
+            secret_key=secret_key
+        )
+    
+    success, dev_mode, error_message = send_otp_email(email, otp_code)
+    if not success:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to send verification email. {error_message or ''}".strip()
+        }), 500
+    
+    return jsonify({
+        "success": True
+    })
+
+
+@app.route("/api/auth/verify-otp", methods=["POST"])
+def verify_otp_route():
+    data = request.json or {}
+    email = data.get("email", "").strip()
+    otp_code = data.get("otp", "").strip()
+    
+    if not email or not otp_code:
+        return jsonify({"success": False, "error": "Email and OTP are required"}), 400
+        
+    if "@" not in email:
+        email += "@gmail.com"
+        
+    is_valid, error_code = verify_otp_status(
+        email=email, 
+        otp_code=otp_code, 
+        allowed_attempts=OTP_CONFIG.get("allowed_attempts", 3),
+        secret_key=app.secret_key
+    )
+    if not is_valid:
+        if error_code == "TOO_MANY_ATTEMPTS":
+            return jsonify({
+                "success": False, 
+                "error": "TOO_MANY_ATTEMPTS",
+                "message": "Too many failed verification attempts. This code is now invalid. Please request a new one."
+            }), 429
+        return jsonify({"success": False, "error": "Invalid or expired verification code"}), 400
+        
+    user_id = create_user(email)
+    
+    # Store session details
+    guest_id = session.get("guest_id")
+    session.clear()
+    session["user_id"] = user_id
+    session["user_email"] = email
+    session["is_guest"] = False
+    
+    # If there was a guest history, migrate it to the logged in user
+    if guest_id:
+        migrate_guest_history(guest_id, user_id)
+        
+    return jsonify({"success": True})
 
 
 @app.route("/health")
@@ -344,6 +548,7 @@ def health():
 
 
 @app.route("/history")
+@login_required
 def history():
     raw_history = load_history()
     normalized_history = []
@@ -368,18 +573,20 @@ def history():
 
 
 @app.route("/history/<item_id>", methods=["DELETE"])
+@login_required
 def delete_history_item(item_id):
     try:
-        raw_history = load_history()
-        new_history = [item for item in raw_history if item.get("id") != item_id]
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(new_history, f, ensure_ascii=False, indent=2)
+        identifier = session.get("user_id") or session.get("guest_id")
+        if not identifier:
+            return jsonify({"success": False, "error": "Not authenticated"}), 401
+        delete_history_item_for_user(identifier, item_id)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/analyze", methods=["POST"])
+@login_required
 def analyze():
     question = request.form.get("question", "").strip()
     
@@ -507,6 +714,7 @@ def analyze():
 
 
 @app.route("/api/chat", methods=["POST"])
+@login_required
 def api_chat():
     try:
         data = request.json or {}
