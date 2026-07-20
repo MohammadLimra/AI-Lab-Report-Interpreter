@@ -413,7 +413,6 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
 
 @app.route("/")
-@login_required
 def index():
     history = load_history()
     return render_template("index.html", history=history)
@@ -427,10 +426,11 @@ def auth_page():
     return render_template("auth.html", google_client_id=google_client_id)
 
 
+@app.route("/api/auth/logout")
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("auth_page"))
+    return redirect(url_for("index"))
 
 
 @app.route("/api/auth/send-otp", methods=["POST"])
@@ -548,7 +548,6 @@ def health():
 
 
 @app.route("/history")
-@login_required
 def history():
     raw_history = load_history()
     normalized_history = []
@@ -573,7 +572,6 @@ def history():
 
 
 @app.route("/history/<item_id>", methods=["DELETE"])
-@login_required
 def delete_history_item(item_id):
     try:
         identifier = session.get("user_id") or session.get("guest_id")
@@ -586,7 +584,6 @@ def delete_history_item(item_id):
 
 
 @app.route("/analyze", methods=["POST"])
-@login_required
 def analyze():
     question = request.form.get("question", "").strip()
     
@@ -714,7 +711,6 @@ def analyze():
 
 
 @app.route("/api/chat", methods=["POST"])
-@login_required
 def api_chat():
     try:
         data = request.json or {}
