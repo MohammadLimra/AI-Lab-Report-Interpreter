@@ -73,7 +73,7 @@ async function handleSendOtp(event) {
     alertBox.style.display = 'none';
 
     try {
-        const response = await fetch('/api/auth/send-otp', {
+        const response = await fetch('/send-otp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
@@ -124,7 +124,7 @@ async function resendOtp() {
     boxes.forEach(box => box.value = '');
 
     try {
-        const response = await fetch('/api/auth/send-otp', {
+        const response = await fetch('/send-otp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: activeEmail })
@@ -182,7 +182,7 @@ async function handleVerifyOtp(event) {
     btn.querySelector('span').textContent = "Verifying…";
 
     try {
-        const response = await fetch('/api/auth/verify-otp', {
+        const response = await fetch('/verify-otp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: activeEmail, otp: otpCode })
