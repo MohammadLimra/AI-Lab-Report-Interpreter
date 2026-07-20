@@ -9,6 +9,4 @@ gunicorn
 cryptography
 google-auth
 requests
-
-
-
+flask-cors
