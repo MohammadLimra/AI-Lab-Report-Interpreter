@@ -436,7 +436,7 @@ def logout():
     return redirect(url_for("index"))
 
 
-@app.route("/send-otp", methods=["POST"])
+@app.route("/api/auth/send-otp", methods=["POST"])
 def send_otp():
     data = request.json or {}
     email = data.get("email", "").strip()
@@ -496,7 +496,7 @@ def send_otp():
     })
 
 
-@app.route("/verify-otp", methods=["POST"])
+@app.route("/api/auth/verify-otp", methods=["POST"])
 def verify_otp_route():
     data = request.json or {}
     email = data.get("email", "").strip()
