@@ -1,324 +1,452 @@
 
 
-let activeEmail = "";
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    background: var(--bg-base);
+}
 
-document.addEventListener('DOMContentLoaded', () => {
-    setupOtpNavigation();
-});
+.auth-container {
+    width: 100%;
+    max-width: 440px;
+    perspective: 1000px;
+    z-index: 5;
+}
 
+.auth-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 40px;
+    box-shadow: var(--shadow-md), var(--shadow-glow);
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
+    animation: authCardEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
 
-function goToStep(step) {
-    const stepEmail = document.getElementById('stepEmail');
-    const stepOtp = document.getElementById('stepOtp');
-    const alertBox = document.getElementById('authAlert');
-    
-    
-    alertBox.style.display = 'none';
-
-    if (step === 'email') {
-        stepOtp.classList.remove('active');
-        setTimeout(() => {
-            stepOtp.style.display = 'none';
-            stepEmail.style.display = 'flex';
-            setTimeout(() => stepEmail.classList.add('active'), 20);
-        }, 300);
-    } else if (step === 'otp') {
-        stepEmail.classList.remove('active');
-        setTimeout(() => {
-            stepEmail.style.display = 'none';
-            stepOtp.style.display = 'flex';
-            setTimeout(() => stepOtp.classList.add('active'), 20);
-            
-            
-            const firstBox = document.querySelector('.otp-box');
-            if (firstBox) firstBox.focus();
-        }, 300);
+@keyframes authCardEnter {
+    from {
+        opacity: 0;
+        transform: translateY(24px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
 }
 
-
-function showAuthAlert(msg, type = 'error') {
-    const alertBox = document.getElementById('authAlert');
-    alertBox.textContent = msg;
-    alertBox.className = `auth-alert ${type}`;
-    alertBox.style.display = 'block';
-    
-    
-    if (type === 'error') {
-        alertBox.style.animation = 'none';
-        alertBox.offsetHeight; 
-        alertBox.style.animation = 'alertShake 0.4s ease';
-    }
+.auth-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: var(--accent-gradient);
 }
 
 
-async function handleSendOtp(event) {
-    if (event) event.preventDefault();
-    
-    const emailInput = document.getElementById('userEmail');
-    let email = emailInput.value.trim();
-    if (!email) return;
+.auth-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
 
-    if (!email.includes('@')) {
-        email += '@gmail.com';
-        emailInput.value = email;
-    }
+.auth-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 12px rgba(6, 182, 212, 0.4));
+    margin-bottom: 12px;
+}
 
-    activeEmail = email;
-    const btn = document.getElementById('btnSendOtp');
-    btn.disabled = true;
-    btn.querySelector('span').textContent = "Sending code…";
-    
-    const alertBox = document.getElementById('authAlert');
-    alertBox.style.display = 'none';
+.auth-brand-text {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.6rem;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+}
 
-    try {
-        const response = await fetch('/send-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            document.getElementById('displayTargetEmail').textContent = email;
-            
-            
-            const boxes = document.querySelectorAll('.otp-box');
-            boxes.forEach(box => {
-                box.disabled = false;
-                box.value = '';
-            });
-            const verifyBtn = document.getElementById('btnVerifyOtp');
-            if (verifyBtn) {
-                verifyBtn.disabled = false;
-                verifyBtn.querySelector('span').textContent = "Verify and sign in";
-            }
-
-
-            goToStep('otp');
-            showAuthAlert("Verification code sent to your email.", "success");
-        } else {
-            showAuthAlert(data.error || "Failed to send code. Please try again.");
-        }
-    } catch (err) {
-        showAuthAlert("Connection error. Ensure your server is running.");
-        console.error(err);
-    } finally {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = "Send verification code";
-    }
+.auth-brand-sub {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    opacity: 0.8;
 }
 
 
-async function resendOtp() {
-    const resendBtn = document.getElementById('btnResendOtp');
-    if (resendBtn) {
-        resendBtn.disabled = true;
-        resendBtn.textContent = "Sending…";
+.auth-step {
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.auth-step.active {
+    display: flex;
+    animation: authStepFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes authStepFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
     }
-    
-    
-    const boxes = document.querySelectorAll('.otp-box');
-    boxes.forEach(box => box.value = '');
-
-    try {
-        const response = await fetch('/send-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: activeEmail })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            
-            const boxes = document.querySelectorAll('.otp-box');
-            boxes.forEach(box => {
-                box.disabled = false;
-                box.value = '';
-            });
-            const verifyBtn = document.getElementById('btnVerifyOtp');
-            if (verifyBtn) {
-                verifyBtn.disabled = false;
-                verifyBtn.querySelector('span').textContent = "Verify and sign in";
-            }
-
-
-            showAuthAlert("A new verification code has been sent.", "success");
-            
-            
-            const firstBox = document.querySelector('.otp-box');
-            if (firstBox) firstBox.focus();
-        } else {
-            showAuthAlert(data.error || "Failed to resend code.");
-        }
-    } catch (err) {
-        showAuthAlert("Connection error. Could not resend.");
-    } finally {
-        if (resendBtn) {
-            resendBtn.disabled = false;
-            resendBtn.textContent = "Resend code";
-        }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
+.auth-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: #ffffff;
+    letter-spacing: -0.01em;
+    margin-top: 10px;
+}
 
-async function handleVerifyOtp(event) {
-    if (event) event.preventDefault();
-    
-    const boxes = document.querySelectorAll('.otp-box');
-    let otpCode = "";
-    boxes.forEach(box => otpCode += box.value.trim());
-    
-    if (otpCode.length < 6) {
-        showAuthAlert("Please enter all 6 digits of the code.");
-        return;
-    }
-
-    const btn = document.getElementById('btnVerifyOtp');
-    btn.disabled = true;
-    btn.querySelector('span').textContent = "Verifying…";
-
-    try {
-        const response = await fetch('/verify-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: activeEmail, otp: otpCode })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            showAuthAlert("Authenticated successfully! Redirecting…", "success");
-            setTimeout(() => {
-                window.location.href = "/";
-            }, 1000);
-        } else {
-            if (data.error === "TOO_MANY_ATTEMPTS") {
-                showAuthAlert(data.message || "Too many failed attempts. This code is now invalid. Please request a new one.");
-                
-                btn.disabled = true;
-                btn.querySelector('span').textContent = "Verification blocked";
-                boxes.forEach(box => {
-                    box.disabled = true;
-                    box.value = '';
-                });
-            } else {
-                showAuthAlert(data.error || "Incorrect or expired code. Please try again.");
-                
-                boxes.forEach((box, i) => {
-                    box.value = '';
-                    if (i === 0) box.focus();
-                });
-                btn.disabled = false;
-                btn.querySelector('span').textContent = "Verify and sign in";
-            }
-        }
-    } catch (err) {
-        showAuthAlert("Connection error. Could not verify.");
-        console.error(err);
-        btn.disabled = false;
-        btn.querySelector('span').textContent = "Verify and sign in";
-    }
+.auth-description {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
 }
 
 
-function setupOtpNavigation() {
-    const boxes = document.querySelectorAll('.otp-box');
-    
-    boxes.forEach((box, index) => {
-        
-        box.addEventListener('input', (e) => {
-            const val = box.value;
-            
-            if (!/^[0-9]$/.test(val)) {
-                box.value = '';
-                return;
-            }
-            
-            if (val && index < boxes.length - 1) {
-                boxes[index + 1].focus();
-            }
-            
-            
-            checkAndSubmitIfComplete();
-        });
-        
-        
-        box.addEventListener('keydown', (e) => {
-            if (e.key === 'Backspace') {
-                if (!box.value && index > 0) {
-                    boxes[index - 1].value = '';
-                    boxes[index - 1].focus();
-                } else {
-                    box.value = '';
-                }
-            } else if (e.key === 'ArrowLeft' && index > 0) {
-                boxes[index - 1].focus();
-            } else if (e.key === 'ArrowRight' && index < boxes.length - 1) {
-                boxes[index + 1].focus();
-            }
-        });
-        
-        
-        box.addEventListener('paste', (e) => {
-            e.preventDefault();
-            const pasteData = (e.clipboardData || window.clipboardData).getData('text').trim();
-            if (/^\d{6}$/.test(pasteData)) {
-                boxes.forEach((b, i) => {
-                    b.value = pasteData[i];
-                });
-                boxes[boxes.length - 1].focus();
-                checkAndSubmitIfComplete();
-            }
-        });
-    });
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-function checkAndSubmitIfComplete() {
-    const boxes = document.querySelectorAll('.otp-box');
-    let isComplete = true;
-    boxes.forEach(box => {
-        if (!box.value) isComplete = false;
-    });
-    
-    if (isComplete) {
-        handleVerifyOtp();
-    }
+.input-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.auth-input {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.auth-input:focus {
+    border-color: var(--accent-indigo);
+    background: var(--bg-raised-active);
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+
+.auth-btn {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    padding: 14px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    border: none;
+    background: var(--accent-gradient);
+    color: white;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.auth-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+    transform: skewX(-25deg);
+    animation: btn-shimmer 4s ease-in-out infinite;
+}
+
+.auth-btn:hover {
+    background: var(--accent-gradient-hover);
+    transform: translateY(-2px) scale(1.018);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45);
+}
+
+.auth-btn:active {
+    transform: translateY(1px);
+}
+
+.auth-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn-icon {
+    transition: transform 0.2s ease;
+}
+
+.auth-btn:hover .btn-icon {
+    transform: translateX(3px);
 }
 
 
-
-
-async function handleGoogleSignIn(response) {
-    const idToken = response.credential;
-    
-    
-    const alertBox = document.getElementById('authAlert');
-    if (alertBox) alertBox.style.display = 'none';
-
-    try {
-        const res = await fetch('/api/auth/google', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id_token: idToken })
-        });
-        
-        const data = await res.json();
-        
-        if (res.ok && data.success) {
-            showAuthAlert("Authenticated with Google! Redirecting...", "success");
-            setTimeout(() => {
-                window.location.href = "/";
-            }, 1000);
-        } else {
-            showAuthAlert(data.error || "Google sign-in failed. Please try again.");
-        }
-    } catch (err) {
-        showAuthAlert("Connection error during Google Sign-In.");
-        console.error(err);
-    }
+.back-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    align-self: flex-start;
+    transition: color 0.2s ease;
 }
 
+.back-nav:hover {
+    color: var(--accent-cyan);
+}
+
+.resend-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    margin-top: 10px;
+}
+
+.resend-text {
+    color: var(--text-muted);
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--accent-cyan);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: color 0.2s ease;
+}
+
+.btn-link:hover {
+    color: var(--accent-indigo);
+    text-decoration: underline;
+}
+
+
+.otp-inputs-wrapper {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 15px 0 25px 0;
+}
+
+.otp-box {
+    width: 48px;
+    height: 52px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.otp-box:focus {
+    border-color: var(--accent-cyan);
+    background: var(--bg-raised-active);
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
+    transform: scale(1.05);
+}
+
+
+.dev-notice-card {
+    background: rgba(251, 191, 36, 0.03);
+    border: 1px dashed rgba(251, 191, 36, 0.2);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dev-notice-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dev-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--signal-amber);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.dev-explain {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.dev-notice-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.dev-code {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #ffffff;
+    background: rgba(0,0,0,0.25);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.05);
+    letter-spacing: 1px;
+}
+
+.dev-copy-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.dev-copy-btn:hover {
+    background: var(--bg-raised-active);
+    color: #ffffff;
+    border-color: var(--border-hover);
+}
+
+
+.auth-alert {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    display: none;
+    line-height: 1.4;
+    animation: alertShake 0.4s ease;
+}
+
+.auth-alert.success {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    color: var(--signal-green);
+}
+
+.auth-alert.error {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: var(--signal-red);
+}
+
+
+@keyframes alertShake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
+
+
+[data-theme="light"] .auth-title {
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .auth-description {
+    color: var(--text-secondary);
+}
+
+[data-theme="light"] .auth-brand-sub {
+    color: var(--text-muted);
+}
+
+[data-theme="light"] .otp-box {
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .dev-code {
+    color: var(--text-primary);
+    background: rgba(15, 23, 42, 0.04);
+    border-color: rgba(99, 102, 241, 0.15);
+}
+
+[data-theme="light"] .dev-copy-btn:hover {
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .auth-input {
+    background: rgba(15, 23, 42, 0.02);
+    border-color: rgba(99, 102, 241, 0.15);
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .auth-input:focus {
+    border-color: var(--accent-cyan);
+    background: #ffffff;
+}
+
+[data-theme="light"] .input-label {
+    color: var(--text-secondary);
+}
+
+[data-theme="light"] .btn-link {
+    color: var(--accent-indigo);
+}
+
+[data-theme="light"] .btn-link:hover {
+    color: var(--accent-cyan);
+}
+
+
+[data-theme="light"] .auth-logo {
+    filter: invert(0.9) brightness(1.15) contrast(1.2) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15)) !important;
+    border-radius: 10px;
+}
+
+@keyframes btn-shimmer {
+    0% { left: -150%; }
+    30% { left: 150%; }
+    100% { left: 150%; }
+}
