@@ -78,56 +78,48 @@ def login_required(f):
 
 def send_otp_email(recipient_email, otp_code):
     last_error = None
-    sent_successfully = False
+    from_mail = os.getenv('EMAIL_USER') or os.getenv('SMTP_USERNAME') or os.getenv('SMTP_SENDER')
+    app_password = os.getenv('EMAIL_PASS') or os.getenv('SMTP_PASSWORD')
 
-    # 1. Try Resend API
-    resend_api_key = os.environ.get("RESEND_API_KEY")
-    otp_from_email = os.environ.get("OTP_FROM_EMAIL")
-    
-    if resend_api_key and otp_from_email:
-        try:
-            import requests as python_requests
-            url = "https://api.resend.com/emails"
-            headers = {
-                "Authorization": f"Bearer {resend_api_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "from": otp_from_email,
-                "to": recipient_email,
-                "subject": "Your Medical Report Interpreter Verification Code",
-                "html": f"""
-                <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
-                    <h2 style="color: #333;">Medical Report Interpreter</h2>
-                    <p>Hello,</p>
-                    <p>Your verification code is:</p>
-                    <h1 style="color: #4F46E5; font-size: 32px; letter-spacing: 2px; margin: 20px 0;">{otp_code}</h1>
-                    <p>This code is valid for 5 minutes. If you did not request this, you can safely ignore this email.</p>
-                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-                    <p style="font-size: 12px; color: #666;">This is an automated message. Please do not reply to this email.</p>
-                </div>
-                """
-            }
-            response = python_requests.post(url, headers=headers, json=payload, timeout=10)
-            if response.status_code in [200, 201]:
-                print(f"[OTP] Successfully sent verification code to {recipient_email} via Resend")
-                sent_successfully = True
-            else:
-                try:
-                    err_json = response.json()
-                    resend_msg = err_json.get("message", response.text)
-                except Exception:
-                    resend_msg = response.text
-                last_error = f"Resend API error: {resend_msg}"
-                print(f"[OTP ERROR] {last_error}")
-        except Exception as e:
-            last_error = f"Resend API exception: {str(e)}"
-            print(f"[OTP ERROR] {last_error}")
-            
-    # Strict return: returns False if Resend fails to send the email
-    if sent_successfully:
+    if not from_mail or not app_password:
+        return False, False, "EMAIL_USER/EMAIL_PASS (or SMTP_USERNAME/SMTP_PASSWORD) environment variables are missing!"
+
+    try:
+        from email.message import EmailMessage
+        # Connect to Gmail's SMTP Server
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(from_mail, app_password)
+
+        # Build the email message
+        msg = EmailMessage()
+        msg['Subject'] = "Your Medical Report Interpreter Verification Code"
+        msg['From'] = from_mail
+        msg['To'] = recipient_email
+        
+        # Build attractive HTML email content
+        html_content = f"""
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+            <h2 style="color: #333;">Medical Report Interpreter</h2>
+            <p>Hello,</p>
+            <p>Your verification code is:</p>
+            <h1 style="color: #4F46E5; font-size: 32px; letter-spacing: 2px; margin: 20px 0;">{otp_code}</h1>
+            <p>This code is valid for 5 minutes. If you did not request this, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #666;">This is an automated message. Please do not reply to this email.</p>
+        </div>
+        """
+        msg.set_content(f"Your verification code is: {otp_code}")
+        msg.add_alternative(html_content, subtype='html')
+
+        # Send it!
+        server.send_message(msg)
+        server.quit()
+        print(f"[OTP] Successfully sent verification code to {recipient_email} via SMTP")
         return True, False, None
-    else:
+    except Exception as e:
+        last_error = f"SMTP error: {str(e)}"
+        print(f"[OTP ERROR] {last_error}")
         return False, False, last_error
 
 
