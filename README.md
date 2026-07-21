@@ -1,5 +1,6 @@
 **AI-Lab-Report_Interpreter** is a Flask-based web application designed to simplify the analysis of medical lab reports. It allows users to upload images or PDFs, extracts text using Optical Character Recognition (OCR), and analyzes the content with AI tools to provide medical insights. This tool automates the interpretation of lab data, saving time and improving efficiency for healthcare professionals.
- https://ai-lab-report-interpreter-resend-api.up.railway.app/
+
+--------
 
 ## Features
 - **File Uploads**: Supports image (`png`, `jpg`, `jpeg`) and PDF formats.
