@@ -33,59 +33,138 @@
         </button>
       </div>
       <div class="mark-sub">Clinical Insights Co-pilot</div>
-      <svg class="waveform" viewBox="0 0 240 100" fill="none" preserveAspectRatio="xMidYMid meet" aria-hidden="true" style="overflow: visible; height: 100px; width: 100%; margin-top: 14px; margin-bottom: 0px;">
-        <g class="hologram-stage">
-          
-          
-          <g class="holo-doc">
-            
-            <rect class="doc-card" x="60" y="10" width="120" height="80" rx="6" fill="var(--bg-sidebar)" stroke="var(--accent-cyan)" stroke-width="1.5" />
-            
-            <line x1="75" y1="25" x2="165" y2="25" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" />
-            <line x1="75" y1="35" x2="145" y2="35" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" />
-            <line x1="75" y1="45" x2="155" y2="45" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" />
-            <line x1="75" y1="55" x2="125" y2="55" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" />
-            <line x1="75" y1="65" x2="135" y2="65" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" />
-            
-            <line class="laser-beam" x1="56" y1="12" x2="184" y2="12" stroke="var(--accent-cyan)" stroke-width="2.5" stroke-linecap="round" />
-          </g>
+      
+      <div class="ai-report-engine-card">
+        <div class="engine-header">
+          <div class="engine-title-group">
+            <span class="engine-chip"><i class="chip-spark"></i> AI PARSER</span>
+            <span class="engine-subtitle">LAB REPORT MATRIX</span>
+          </div>
+          <div class="engine-badge-live">
+            <span class="engine-live-dot"></span>
+            <span>READY</span>
+          </div>
+        </div>
 
-          
-          <g class="holo-particles">
-            
-            <circle class="part p1" cx="80" cy="50" r="2" fill="var(--accent-cyan)" />
-            <circle class="part p2" cx="120" cy="40" r="1.5" fill="var(--accent-indigo)" />
-            <circle class="part p3" cx="160" cy="60" r="2.5" fill="var(--accent-cyan)" />
-            <circle class="part p4" cx="100" cy="70" r="1.8" fill="var(--accent-indigo)" />
-            
-            
-            <g class="dna-helix">
-              <path class="dna-strand-1" d="M 70,50 Q 85,30 100,50 T 130,50 T 160,50 T 190,50" fill="none" stroke="var(--accent-cyan)" stroke-width="1" opacity="0.4" />
-              <path class="dna-strand-2" d="M 70,50 Q 85,70 100,50 T 130,50 T 160,50 T 190,50" fill="none" stroke="var(--accent-indigo)" stroke-width="1" opacity="0.4" />
-              <circle class="dna-node" cx="85" cy="40" r="2" fill="var(--accent-cyan)" />
-              <circle class="dna-node" cx="115" cy="60" r="2" fill="var(--accent-indigo)" />
-              <circle class="dna-node" cx="145" cy="40" r="2" fill="var(--accent-cyan)" />
-              <circle class="dna-node" cx="175" cy="60" r="2" fill="var(--accent-indigo)" />
+        <div class="engine-visual-box">
+          <svg class="engine-svg" viewBox="0 0 240 100" fill="none" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <defs>
+              <filter id="ai-cyan-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="2" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+
+              <linearGradient id="ai-laser-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.2" />
+                <stop offset="30%" stop-color="#00f2fe" stop-opacity="1" />
+                <stop offset="70%" stop-color="#38bdf8" stop-opacity="1" />
+                <stop offset="100%" stop-color="#10b981" stop-opacity="0.3" />
+              </linearGradient>
+
+              <linearGradient id="ai-sweep-cone" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.35" />
+                <stop offset="100%" stop-color="#00f2fe" stop-opacity="0.0" />
+              </linearGradient>
+
+              <linearGradient id="bar-grad-1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00f2fe" />
+                <stop offset="100%" stop-color="#38bdf8" />
+              </linearGradient>
+              <linearGradient id="bar-grad-2" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#10b981" />
+                <stop offset="100%" stop-color="#34d399" />
+              </linearGradient>
+              <linearGradient id="bar-grad-3" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b" />
+                <stop offset="100%" stop-color="#fbbf24" />
+              </linearGradient>
+            </defs>
+
+            <!-- Background AI Grid -->
+            <rect class="engine-bg-rect" x="2" y="2" width="236" height="96" rx="6" fill="rgba(15, 23, 42, 0.5)" stroke="var(--border-color)" stroke-width="0.8" />
+            <line x1="12" y1="28" x2="228" y2="28" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.3" />
+            <line x1="12" y1="52" x2="228" y2="52" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.3" />
+            <line x1="12" y1="76" x2="228" y2="76" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.3" />
+            <line x1="124" y1="8" x2="124" y2="92" stroke="var(--border-color)" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.2" />
+
+            <!-- LEFT: Neural Network Nodes -->
+            <g class="neural-network-group" transform="translate(12, 12)">
+              <path d="M 12 18 L 36 34 L 12 50 L 36 34" stroke="var(--accent-cyan)" stroke-width="1" opacity="0.4" fill="none" />
+              <circle cx="12" cy="18" r="3" fill="#00f2fe" filter="url(#ai-cyan-glow)" />
+              <text x="18" y="21" font-size="5" font-weight="700" fill="var(--text-secondary)">OCR</text>
+
+              <circle cx="36" cy="34" r="3.5" fill="#10b981" filter="url(#ai-cyan-glow)" />
+              <text x="43" y="37" font-size="5" font-weight="700" fill="#10b981">PARSER</text>
+
+              <circle cx="12" cy="50" r="3" fill="#38bdf8" filter="url(#ai-cyan-glow)" />
+              <text x="18" y="53" font-size="5" font-weight="700" fill="var(--text-secondary)">LLM</text>
+
+              <circle class="synapse-packet p1" cx="24" cy="26" r="1.5" fill="#ffffff" />
+              <circle class="synapse-packet p2" cx="24" cy="42" r="1.5" fill="#ffffff" />
             </g>
-          </g>
 
-          
-          <g class="holo-alert">
-            <rect class="alert-box" x="80" y="30" width="80" height="40" rx="4" fill="rgba(245, 158, 11, 0.05)" stroke="var(--signal-amber)" stroke-width="1.5" />
-            <text x="120" y="50" font-size="10" font-weight="700" fill="var(--signal-amber)" text-anchor="middle" letter-spacing="1">ABNORMAL</text>
-            <circle class="alert-glow" cx="120" cy="45" r="15" stroke="var(--signal-amber)" stroke-width="1" opacity="0.5" fill="none" />
-          </g>
+            <!-- CENTER: Lab Report Document Sheet & Scanning Laser -->
+            <g class="lab-sheet-group" transform="translate(85, 10)">
+              <rect class="lab-sheet-bg" x="0" y="0" width="82" height="78" rx="5" fill="rgba(15, 23, 42, 0.75)" stroke="var(--accent-cyan)" stroke-width="1" opacity="0.9" />
 
-          
-          <g class="holo-score">
-            <circle class="score-dial-bg" cx="120" cy="50" r="32" stroke="var(--border-color)" stroke-width="4" />
-            <circle class="score-dial-val" cx="120" cy="50" r="32" stroke="var(--signal-green)" stroke-width="4" stroke-dasharray="200" stroke-dashoffset="50" stroke-linecap="round" />
-            <text class="score-val" x="120" y="55" font-size="16" font-weight="800" fill="var(--text-primary)" text-anchor="middle">98%</text>
-            <text class="score-lbl" x="120" y="68" font-size="7" font-weight="600" fill="var(--signal-green)" text-anchor="middle" letter-spacing="0.5">HEALTHY</text>
-          </g>
+              <rect x="6" y="8" width="28" height="4" rx="1.5" fill="var(--accent-cyan)" opacity="0.9" />
+              <line x1="42" y1="10" x2="76" y2="10" stroke="var(--border-color)" stroke-width="2" stroke-dasharray="1 1 2 1 3 1" opacity="0.6" />
 
-        </g>
-      </svg>
+              <text x="6" y="24" font-size="4.5" font-weight="700" fill="var(--text-secondary)">HEMOGLOBIN</text>
+              <rect x="52" y="19" width="24" height="6" rx="2" fill="rgba(16, 185, 129, 0.15)" stroke="#10b981" stroke-width="0.6" />
+              <text x="64" y="23.5" font-size="4" font-weight="800" fill="#10b981" text-anchor="middle">14.2 NORMAL</text>
+
+              <text x="6" y="38" font-size="4.5" font-weight="700" fill="var(--text-secondary)">GLUCOSE</text>
+              <rect x="52" y="33" width="24" height="6" rx="2" fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" stroke-width="0.6" />
+              <text x="64" y="37.5" font-size="4" font-weight="800" fill="#f59e0b" text-anchor="middle">105 HIGHER</text>
+
+              <text x="6" y="52" font-size="4.5" font-weight="700" fill="var(--text-secondary)">WBC COUNT</text>
+              <rect x="52" y="47" width="24" height="6" rx="2" fill="rgba(56, 189, 248, 0.15)" stroke="#38bdf8" stroke-width="0.6" />
+              <text x="64" y="51.5" font-size="4" font-weight="800" fill="#38bdf8" text-anchor="middle">7.2 OPTIMAL</text>
+
+              <line x1="6" y1="66" x2="76" y2="66" stroke="var(--border-color)" stroke-width="3" stroke-dasharray="2 1 4 2 1 3 2 1" opacity="0.4" />
+
+              <g class="ai-laser-scanner">
+                <polygon points="0,0 82,0 82,12 0,12" fill="url(#ai-sweep-cone)" />
+                <line x1="-2" y1="0" x2="84" y2="0" stroke="url(#ai-laser-grad)" stroke-width="2" filter="url(#ai-cyan-glow)" />
+                <circle cx="41" cy="0" r="2" fill="#ffffff" filter="url(#ai-cyan-glow)" />
+              </g>
+            </g>
+
+            <!-- RIGHT: Biomarker Analytics Gauges -->
+            <g class="biomarker-analytics-group" transform="translate(178, 14)">
+              <text x="0" y="8" font-size="4.5" font-weight="800" fill="var(--accent-cyan)" letter-spacing="0.5">BIOMARKERS</text>
+              
+              <text x="0" y="20" font-size="4" font-weight="600" fill="var(--text-secondary)">CBC PANEL</text>
+              <rect x="0" y="23" width="46" height="4" rx="2" fill="rgba(255,255,255,0.06)" />
+              <rect class="bar-fill b1" x="0" y="23" width="38" height="4" rx="2" fill="url(#bar-grad-1)" />
+
+              <text x="0" y="37" font-size="4" font-weight="600" fill="var(--text-secondary)">LFT / RFT</text>
+              <rect x="0" y="40" width="46" height="4" rx="2" fill="rgba(255,255,255,0.06)" />
+              <rect class="bar-fill b2" x="0" y="40" width="42" height="4" rx="2" fill="url(#bar-grad-2)" />
+
+              <text x="0" y="54" font-size="4" font-weight="600" fill="var(--text-secondary)">LIPID PANEL</text>
+              <rect x="0" y="57" width="46" height="4" rx="2" fill="rgba(255,255,255,0.06)" />
+              <rect class="bar-fill b3" x="0" y="57" width="32" height="4" rx="2" fill="url(#bar-grad-3)" />
+            </g>
+          </svg>
+        </div>
+
+        <div class="engine-footer">
+          <div class="engine-footer-left">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span>AI REPORT INTERPRETER</span>
+          </div>
+          <div class="engine-footer-right">
+            <span class="metric-highlight">38 METRICS</span>
+            <span class="dot-sep">&bull;</span>
+            <span>0.4s INFERENCE</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <button class="sidebar-new-btn" onclick="startNewAnalysis()">
