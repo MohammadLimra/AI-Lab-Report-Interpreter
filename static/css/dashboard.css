@@ -686,138 +686,195 @@ body::after {
 }
 
 
-.waveform {
+/* ==========================================================================
+   AI LAB REPORT INTERPRETER ENGINE CARD (HEAVY GRAPHICS & LASER SCANNER)
+   ========================================================================== */
+
+.ai-report-engine-card {
   width: 100%;
-  height: 100px;
   margin-top: 14px;
-  margin-bottom: 0px;
-  overflow: visible;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-.hologram-stage {
-  transform-style: preserve-3d;
-  perspective: 400px;
+.ai-report-engine-card:hover {
+  border-color: rgba(0, 242, 254, 0.4);
+  box-shadow: 0 4px 24px rgba(0, 242, 254, 0.12);
 }
 
-
-.waveform .holo-doc,
-.waveform .holo-particles,
-.waveform .holo-alert,
-.waveform .holo-score {
-  transform-origin: 120px 50px;
-  transition: opacity 0.4s ease-in-out;
+.engine-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-
-.waveform .holo-doc {
-  animation: phase-doc 10s infinite;
-}
-.waveform .holo-particles {
-  animation: phase-parts 10s infinite;
-}
-.waveform .holo-alert {
-  animation: phase-alert 10s infinite;
-}
-.waveform .holo-score {
-  animation: phase-score 10s infinite;
+.engine-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-
-.waveform .laser-beam {
-  animation: holo-laser 2.5s ease-in-out infinite;
+.engine-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  background: rgba(0, 242, 254, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  border-radius: 4px;
+  letter-spacing: 0.05em;
 }
 
-
-.waveform .part {
-  animation: drift-particle 5s ease-in-out infinite alternate;
-}
-.waveform .p1 { animation-delay: 0.2s; }
-.waveform .p2 { animation-delay: 0.8s; }
-.waveform .p3 { animation-delay: 1.4s; }
-.waveform .p4 { animation-delay: 2s; }
-
-.waveform .dna-helix {
-  animation: helix-pulse 3s ease-in-out infinite alternate;
+.chip-spark {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
 }
 
-
-.waveform .alert-box {
-  animation: box-blink 1.5s infinite alternate;
-}
-.waveform .alert-glow {
-  animation: ring-expand 1.5s infinite;
-}
-
-
-.waveform .score-dial-val {
-  transform: rotate(-90deg);
-  transform-origin: 120px 50px;
-  animation: dial-fill 10s infinite;
+.engine-subtitle {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
 }
 
-
-
-@keyframes phase-doc {
-  0%, 25% { opacity: 1; transform: translateY(0) rotateX(10deg); }
-  30%, 100% { opacity: 0; transform: translateY(-10px) rotateX(10deg); }
+.engine-badge-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #10b981;
+  letter-spacing: 0.06em;
 }
 
-@keyframes phase-parts {
-  0%, 28% { opacity: 0; transform: scale(0.9); }
-  33%, 50% { opacity: 1; transform: scale(1); }
-  55%, 100% { opacity: 0; transform: scale(1.1); }
+.engine-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: engine-dot-blink 1.8s ease-in-out infinite;
 }
 
-@keyframes phase-alert {
-  0%, 53% { opacity: 0; transform: scale(0.9); }
-  58%, 75% { opacity: 1; transform: scale(1); }
-  80%, 100% { opacity: 0; transform: scale(1.1); }
+.engine-visual-box {
+  width: 100%;
+  height: 105px;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: rgba(10, 15, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-@keyframes phase-score {
-  0%, 78% { opacity: 0; transform: scale(0.9); }
-  83%, 98% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1); }
+.engine-svg {
+  width: 100%;
+  height: 100%;
 }
 
-@keyframes holo-laser {
-  0%, 100% { transform: translateY(0); opacity: 0.2; }
-  50% { transform: translateY(74px); opacity: 1; filter: drop-shadow(0 0 5px var(--accent-cyan)); }
+/* AI Laser Scanning Beam Animation */
+.ai-laser-scanner {
+  animation: ai-doc-laser-scan 2.8s ease-in-out infinite alternate;
 }
 
-@keyframes drift-particle {
-  0% { transform: translate(0, 0); opacity: 0.5; }
-  100% { transform: translate(15px, -15px); opacity: 1; filter: drop-shadow(0 0 3px var(--accent-cyan)); }
+.ai-report-engine-card:hover .ai-laser-scanner {
+  animation-duration: 2s;
 }
 
-@keyframes helix-pulse {
-  0% { transform: scale(0.95); opacity: 0.3; }
-  100% { transform: scale(1.05); opacity: 0.8; filter: drop-shadow(0 0 6px var(--accent-indigo)); }
+/* Synapse Packet Particle Motion */
+.synapse-packet {
+  animation: ai-synapse-flow 1.8s linear infinite;
 }
 
-@keyframes box-blink {
-  0% { stroke: var(--signal-amber); fill: rgba(245, 158, 11, 0.05); }
-  100% { stroke: #ffb020; fill: rgba(245, 158, 11, 0.25); filter: drop-shadow(0 0 6px var(--signal-amber)); }
+.synapse-packet.p2 {
+  animation-delay: 0.9s;
 }
 
-@keyframes ring-expand {
-  0% { r: 5px; opacity: 0.8; }
-  100% { r: 25px; opacity: 0; }
+/* Biomarker Progress Bar Fill Pulsing */
+.bar-fill {
+  animation: bar-glow-pulse 3s ease-in-out infinite alternate;
 }
 
-@keyframes dial-fill {
-  0%, 80% { stroke-dashoffset: 200; }
-  88%, 98% { stroke-dashoffset: 55; }
-  100% { stroke-dashoffset: 200; }
+.bar-fill.b2 { animation-delay: 0.6s; }
+.bar-fill.b3 { animation-delay: 1.2s; }
+
+.engine-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.64rem;
+  color: var(--text-secondary);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+}
+
+.engine-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+.engine-footer-right {
+  font-weight: 600;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.metric-highlight {
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.dot-sep {
+  margin: 0 3px;
+  opacity: 0.4;
+}
+
+/* Keyframes */
+@keyframes ai-doc-laser-scan {
+  0% { transform: translateY(2px); }
+  100% { transform: translateY(64px); }
+}
+
+@keyframes ai-synapse-flow {
+  0% { transform: translate(0px, 0px); opacity: 0.2; }
+  50% { opacity: 1; }
+  100% { transform: translate(12px, 8px); opacity: 0.2; }
+}
+
+@keyframes bar-glow-pulse {
+  0% { opacity: 0.75; }
+  100% { opacity: 1; filter: drop-shadow(0 0 4px var(--accent-cyan)); }
+}
+
+@keyframes engine-dot-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px #10b981; }
+  50% { opacity: 0.3; box-shadow: 0 0 2px #10b981; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .waveform .laser-beam { animation: none; transform: translateY(37px); }
-  .waveform .part { animation: none; opacity: 0.8; }
-  .waveform .holo-doc { opacity: 1; }
-  .waveform .holo-particles,
-  .waveform .holo-alert,
-  .waveform .holo-score { display: none; }
+  .ai-laser-scanner,
+  .synapse-packet,
+  .bar-fill,
+  .engine-live-dot {
+    animation: none !important;
+  }
 }
 
 .sidebar-new-btn {
