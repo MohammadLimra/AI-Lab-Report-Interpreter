@@ -789,6 +789,92 @@ def delete_history_item(item_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+DEFAULT_MOCK_TRENDS = {
+    "Glucose": [
+        {"date": "2026-06-01", "value": 94, "value_str": "94 mg/dL", "range": "70-99 mg/dL", "status": "normal"},
+        {"date": "2026-07-01", "value": 112, "value_str": "112 mg/dL", "range": "70-99 mg/dL", "status": "high"},
+        {"date": "2026-07-14", "value": 98, "value_str": "98 mg/dL", "range": "70-99 mg/dL", "status": "normal"}
+    ],
+    "Cholesterol": [
+        {"date": "2026-06-01", "value": 178, "value_str": "178 mg/dL", "range": "< 200 mg/dL", "status": "normal"},
+        {"date": "2026-07-01", "value": 224, "value_str": "224 mg/dL", "range": "< 200 mg/dL", "status": "high"},
+        {"date": "2026-07-14", "value": 196, "value_str": "196 mg/dL", "range": "< 200 mg/dL", "status": "normal"}
+    ],
+    "HbA1c": [
+        {"date": "2026-06-01", "value": 5.4, "value_str": "5.4%", "range": "4.0-5.6%", "status": "normal"},
+        {"date": "2026-07-01", "value": 5.9, "value_str": "5.9%", "range": "4.0-5.6%", "status": "high"},
+        {"date": "2026-07-14", "value": 5.5, "value_str": "5.5%", "range": "4.0-5.6%", "status": "normal"}
+    ]
+}
+
+
+def build_trends_from_history(raw_history):
+    trends = {}
+    for item in raw_history:
+        analysis = item.get("analysis") or ""
+        date_raw = item.get("timestamp_display") or item.get("timestamp") or ""
+        date_str = date_raw.split(" ")[0].split("T")[0] if date_raw else "2026-07-01"
+        
+        lines = analysis.splitlines()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            match = re.search(r"[\-\*•]?\s*\*\*([^\*:]+)\*\*:\s*([0-9\.]+(?:\s*[A-Za-z/\%]+)?)(?:\s*\((?:Reference Range:\s*)?([^\)]+)\))?\s*(?:[\-\—\–]\s*(.+))?", line, re.IGNORECASE)
+            if not match:
+                match = re.search(r"[\-\*•]?\s*([A-Za-z0-9\s,\/\-\+]+):\s*([0-9\.]+(?:\s*[A-Za-z/\%]+)?)(?:\s*\((?:Reference Range:\s*)?([^\)]+)\))?\s*(?:[\-\—\–]\s*(.+))?", line, re.IGNORECASE)
+                
+            if match:
+                param = match.group(1).strip()
+                val_raw = match.group(2).strip()
+                rng = (match.group(3) or "").strip()
+                status_raw = (match.group(4) or "").strip()
+                
+                if len(param) < 2 or param.lower() in ["note", "comments", "test", "name", "date", "final report"]:
+                    continue
+                    
+                num_match = re.search(r"([0-9\.]+)", val_raw)
+                if not num_match:
+                    continue
+                try:
+                    num_val = float(num_match.group(1))
+                except ValueError:
+                    continue
+                    
+                status = "normal"
+                if "high" in status_raw.lower() or "🔴" in status_raw:
+                    status = "high"
+                elif "low" in status_raw.lower() or "⚠️" in status_raw:
+                    status = "low"
+                    
+                if param not in trends:
+                    trends[param] = []
+                    
+                if not any(p["date"] == date_str and p["value"] == num_val for p in trends[param]):
+                    trends[param].append({
+                        "date": date_str,
+                        "value": num_val,
+                        "value_str": val_raw,
+                        "range": rng,
+                        "status": status
+                    })
+    
+    for param in trends:
+        trends[param].sort(key=lambda x: x["date"])
+        
+    return trends
+
+
+@app.route("/api/trends")
+def get_trends():
+    raw_history = load_history()
+    trends = build_trends_from_history(raw_history)
+    if not trends:
+        trends = DEFAULT_MOCK_TRENDS
+    return jsonify({"success": True, "trends": trends})
+
+
 @app.route("/analyze", methods=["POST"])
 def analyze():
     question = request.form.get("question", "").strip()
