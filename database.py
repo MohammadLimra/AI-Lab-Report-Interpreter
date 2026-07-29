@@ -9,6 +9,18 @@ from cryptography.fernet import Fernet
 DB_FILE = os.path.join(os.path.dirname(__file__), "users.db")
 
 def get_db_connection():
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            if database_url.startswith("postgres://"):
+                database_url = database_url.replace("postgres://", "postgresql://", 1)
+            conn = psycopg2.connect(database_url, sslmode="require", cursor_factory=RealDictCursor)
+            return conn
+        except Exception as e:
+            print(f"Warning: Could not connect to DATABASE_URL Postgres ({e}). Falling back to SQLite.")
+
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
