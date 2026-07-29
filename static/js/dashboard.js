@@ -781,7 +781,15 @@ async function submitAnalysis() {
     }
 
     if (!finalMetadata) {
-      throw new Error("Analysis stream completed without metadata.");
+      if (accumulatedInterpretation && accumulatedInterpretation.trim()) {
+        finalMetadata = {
+          history_id: 'temp_' + Date.now(),
+          timestamp: new Date().toLocaleString(),
+          analysis: accumulatedInterpretation
+        };
+      } else {
+        throw new Error("Analysis stream completed without metadata.");
+      }
     }
 
     clearInterval(msgInterval);
@@ -1092,6 +1100,11 @@ async function sendChatMessage() {
         updateRAGStatus("RAG Context: General clinical guidelines used", "online");
       }
       
+      chatHistory.push({"role": "user", "content": question});
+      chatHistory.push({"role": "assistant", "content": reply});
+    } else if (reply && reply.trim()) {
+      appendChatMessage("AI Patient Assistant", reply, "assistant");
+      updateRAGStatus("RAG Context: General clinical guidelines used", "online");
       chatHistory.push({"role": "user", "content": question});
       chatHistory.push({"role": "assistant", "content": reply});
     } else {
