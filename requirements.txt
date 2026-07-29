@@ -10,3 +10,4 @@ cryptography
 google-auth
 requests
 flask-cors
+psycopg2-binary
