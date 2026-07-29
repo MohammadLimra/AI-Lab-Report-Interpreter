@@ -921,6 +921,9 @@ def analyze():
                 error_msg = "Tesseract OCR binary is missing on the server. Please install Tesseract (e.g. 'brew install tesseract' or 'apt-get install tesseract-ocr') or paste the text directly."
             return jsonify({"success": False, "error": error_msg}), 400
 
+    user_email = session.get("user_email")
+    identifier = session.get("user_id") or session.get("guest_id")
+
     def generate_stream():
         yield json.dumps({"event": "extracted_text", "text": extracted_text}) + "\n"
         
@@ -934,11 +937,19 @@ def analyze():
                 analysis += token
                 yield json.dumps({"event": "token", "text": token}) + "\n"
         except Exception as e:
-            yield json.dumps({"event": "error", "error": f"AI error: {str(e)}"}) + "\n"
+            yield json.dumps({"event": "error", "error": f"AI streaming error: {str(e)}"}) + "\n"
+            return
+
+        if not analysis.strip():
+            yield json.dumps({"event": "error", "error": "No response received from AI engine."}) + "\n"
+            return
+
+        if analysis.startswith("[ERROR:") or analysis.startswith("[API ERROR:"):
+            err_msg = analysis.replace("[ERROR:", "").replace("[API ERROR:", "").rstrip("]")
+            yield json.dumps({"event": "error", "error": err_msg.strip()}) + "\n"
             return
 
         analysis = clean_analysis_text(analysis)
-        
         timestamp_raw = datetime.now().isoformat()
         timestamp_disp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         source_name = filename if filename else "Pasted text"
@@ -956,15 +967,19 @@ def analyze():
             "timestamp_display": timestamp_disp
         }
         
-        save_history(history_entry)
-        
-        # Auto-send email copy to user's Gmail if logged in
-        user_email = session.get("user_email")
+        try:
+            save_history(history_entry, identifier=identifier)
+        except Exception as db_err:
+            print(f"Error saving history: {db_err}")
+
         if user_email:
-            threading.Thread(
-                target=send_report_email,
-                args=(user_email, title, analysis)
-            ).start()
+            try:
+                threading.Thread(
+                    target=send_report_email,
+                    args=(user_email, title, analysis)
+                ).start()
+            except Exception as mail_err:
+                print(f"Error launching email thread: {mail_err}")
         
         yield json.dumps({
             "event": "done",
